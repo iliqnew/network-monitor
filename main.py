@@ -5,6 +5,10 @@ import socket
 import struct
 import threading
 
+from protocol_strategies import (
+    PROTOCOLS
+)
+
 
 class PacketSniffer:
     def __init__(self, root):
@@ -32,7 +36,7 @@ class PacketSniffer:
 
     def sniff_packets(self):
         raw_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
-        raw_socket.bind(("192.168.0.16", 0))  # Replace with your IP address
+        raw_socket.bind(("192.168.0.234", 0))  # Replace with your IP address
         raw_socket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         raw_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
 
@@ -50,37 +54,15 @@ class PacketSniffer:
         ip_header = struct.unpack("!BBHHHBBH4s4s", data[:20])
         src_ip = socket.inet_ntoa(ip_header[8])
         dst_ip = socket.inet_ntoa(ip_header[9])
-        protocol = ip_header[6]
-
+        protocol_id = ip_header[6]
         protocol_name = "Unknown"
-        if protocol == 1:
-            protocol_name = "ICMP"
-        elif protocol == 6:
-            protocol_name = "TCP"
-            if len(data) >= 40:  # Ensure we have at least 40 bytes for the TCP header (20 bytes header + 20 bytes options)
-                tcp_header = struct.unpack("!HHHH", data[20:28])
-                src_port = tcp_header[0]
-                dst_port = tcp_header[1]
+        protocol = PROTOCOLS.get(protocol_id)
 
-                # Get process information based on local port (assuming it's the source port)
-                try:
-                    local_process = psutil.Process(src_port)
-                    process_name = local_process.name()
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    process_name = "N/A"
-            else:
-                src_port = dst_port = process_name = "N/A"
-        elif protocol == 17:
-            protocol_name = "UDP"
-            if len(data) >= 28:  # Ensure we have at least 28 bytes for the UDP header
-                udp_header = struct.unpack("!HHHH", data[20:28])
-                src_port = udp_header[0]
-                dst_port = udp_header[1]
-                process_name = "N/A"  # Unfortunately, for UDP, it's more challenging to associate with a specific process
-            else:
-                src_port = dst_port = process_name = "N/A"
-        
-
+        if not protocol:
+            src_port = dst_port = process_name = "N/A"
+        else:
+            protocol_name = protocol.name
+            src_port, dst_port, process_name = protocol.decode(data)
 
         info = f"Src: {src_ip} (Port: {src_port}) -> Dst: {dst_ip} (Port: {dst_port}) | Protocol: {protocol_name} | Process: {process_name}\n"
 
@@ -99,6 +81,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     sniffer = PacketSniffer(root)
     root.mainloop()
-
-
-
