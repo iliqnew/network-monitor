@@ -1,4 +1,4 @@
-import psutil
+# import psutil
 import json
 import time
 import tkinter as tk
@@ -8,9 +8,7 @@ import struct
 import threading
 from datetime import datetime as dt
 
-from protocol_strategies import (
-    PROTOCOLS
-)
+from protocol_strategies import PROTOCOLS
 
 
 class PacketSniffer:
@@ -18,20 +16,30 @@ class PacketSniffer:
         self.root = root
         self.root.title("Packet Sniffer")
 
-        self.text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=80, height=20)
+        self.text_area = scrolledtext.ScrolledText(
+            root, wrap=tk.WORD, width=80, height=20
+        )
         self.text_area.pack(expand=True, fill="both")
 
-        # Entry widget for filtering IP
-        self.filter_entry = tk.Entry(root, width=15)
-        self.filter_entry.insert(0, "localhost")  # Default filter IP
+        # Filter entry
+        self.filter_entry = tk.Entry(root, width=100)
         self.filter_entry.pack(pady=10)
 
         # Button to start packet sniffing
-        start_button = tk.Button(root, text="Start Sniffing", command=self.toggle_sniffing)
+        start_button = tk.Button(
+            root, text="Start Sniffing", command=self.toggle_sniffing
+        )
         start_button.pack()
+
+        # Button to apply filter
+        apply_filter_button = tk.Button(
+            root, text="Apply Filter", command=self.apply_filter
+        )
+        apply_filter_button.pack()
 
         self.capturing = False
         self.now = None
+        self.filter_func = lambda pack: pack
 
         sniffing_thread = threading.Thread(target=self.sniff_packets)
         sniffing_thread.start()
@@ -40,10 +48,10 @@ class PacketSniffer:
         self.capturing = not self.capturing
 
     def sniff_packets(self):
-        self.now = dt.now().strftime('%Y-%m-%d %H-%M-%S')
+        self.now = dt.now().strftime("%Y-%m-%d %H-%M-%S")
 
         raw_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
-        raw_socket.bind(("localhost", 0))  # Replace with your IP address
+        raw_socket.bind(("192.168.0.11", 0))  # Replace with your IP address
         raw_socket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         raw_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
 
@@ -52,17 +60,17 @@ class PacketSniffer:
                 time.sleep(2)
                 continue
 
-            data, addr = raw_socket.recvfrom(65536)
+            data, _ = raw_socket.recvfrom(65536)
             decoded_data = self.parse_packet(data)
 
             self.save_data(decoded_data)
 
-            filtered_data = self.apply_filters(decoded_data)
+            filtered_data = self.filter_data(decoded_data)
             if filtered_data:
                 self.display_data(filtered_data)
 
-        raw_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
-        raw_socket.close()
+        # raw_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
+        # raw_socket.close()
 
     def parse_packet(self, data):
         ip_header = struct.unpack("!BBHHHBBH4s4s", data[:20])
@@ -96,7 +104,7 @@ class PacketSniffer:
 
     def save_data(self, decoded_data):
         try:
-            with open(f'capture-{self.now}.json', 'r') as f:
+            with open(f"capture-{self.now}.json", "r") as f:
                 d = json.load(f)
         except FileNotFoundError:
             d = []
@@ -108,8 +116,12 @@ class PacketSniffer:
         with open(f"capture-{self.now}.json", "w") as f:
             json.dump(d, f, indent=4)
 
-    def apply_filters(self, data):
-        return data
+    def apply_filter(self):
+        filter_query = self.filter_entry.get()
+        self.filter_func = lambda pack: pack if filter_query and eval(filter_query) else None
+
+    def filter_data(self, data):
+        return self.filter_func(data)
 
     def display_data(self, data):
         src_ip = data["src_ip"]
